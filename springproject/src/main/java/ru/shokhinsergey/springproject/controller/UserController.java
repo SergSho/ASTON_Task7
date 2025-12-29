@@ -1,6 +1,7 @@
 package ru.shokhinsergey.springproject.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
+//import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.BindingResult;
@@ -21,9 +22,14 @@ import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/users")
+
+//TO DO - посмотреть возможность использования взамен RestTemplate
+//@FeignClient(name = "consumer")
 public class UserController {
 
-    private final String URL = "http://localhost:8181/message";
+
+    //Client-side discovery
+//    private final String URL = "http://consumer/message";
 
     private final UserService userService;
     private final RestTemplate restTemplate;
@@ -54,9 +60,10 @@ public class UserController {
         if (id <= 0) throw new NotValidIdException();
         Optional<UserDtoResult> optionalResult = userService.deleteWithManualMessageSending(id);
         UserDtoResult result = optionalResult.stream().findAny().orElseThrow();
-
         Message message = Message.instanceOfMessageOnDelete(result.getEmail());
-        ResponseEntity<Void> response = restTemplate.postForEntity(URL, message, Void.class);
+
+        //Client-side discovery
+        ResponseEntity<Void> response = restTemplate.postForEntity("http://consumer/message", message, Void.class);
         if (!response.getStatusCode().is2xxSuccessful())
             throw new RuntimeException("User deleted from DB. Message not sent by email");
         return result;
@@ -83,7 +90,9 @@ public class UserController {
         }
         UserDtoResult result = userService.createWithManualMessageSending(userCreateDto);
         Message message = Message.instanceOfMessageOnCreate(result.getEmail());
-        ResponseEntity<Void> response = restTemplate.postForEntity(URL, message, Void.class);
+
+        //Client-side discovery
+        ResponseEntity<Void> response = restTemplate.postForEntity("http://consumer/message", message, Void.class);
         if (!response.getStatusCode().is2xxSuccessful())
             throw new RuntimeException("User saved in DB. Message not sent by email.");
         return result;
