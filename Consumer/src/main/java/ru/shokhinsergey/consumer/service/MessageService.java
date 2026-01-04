@@ -32,7 +32,7 @@ public class MessageService {
         this.mailSender = mailSender;
     }
 
-    private SimpleMailMessage prepareMail (String body, String email){
+    private SimpleMailMessage prepareMail(String body, String email) {
         SimpleMailMessage mail = new SimpleMailMessage();
 
         mail.setSubject(subject);
@@ -42,10 +42,13 @@ public class MessageService {
         return mail;
     }
 
-    public void sendEmail(Message message){
-        if (message.getOperation().equalsIgnoreCase("create"))
+    public void sendEmail(Message message) {
+
+        if ("create".equalsIgnoreCase(message.getOperation()))
             mailSender.send(prepareMail(greeting, message.getEmail()));
         else mailSender.send(prepareMail(farewell, message.getEmail()));
-        LOG.info("Email отправлен. Операция: {}, email: {}", message.getOperation(), message.getEmail());
+
+        LOG.info("Message was sent to specified email successfully. Operation: {}, email: {}", message.getOperation(),
+                message.getEmail());
     }
 }

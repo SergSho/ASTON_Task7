@@ -13,6 +13,7 @@ import ru.shokhinsergey.consumer.service.MessageService;
 import ru.shokhinsergey.message.Message;
 
 @RestController
+
 public class MessageController {
     private final Logger LOG = LoggerFactory.getLogger(this.getClass());
 
@@ -24,13 +25,15 @@ public class MessageController {
     }
 
     @RequestMapping("/message")
-    public ResponseEntity<Void> sendMail (@RequestBody Message message) {
-        LOG.info("KafkaConsumer received Message. Операция: {}, email: {}", message.getOperation(), message.getEmail());
+    public void sendMail(@RequestBody Message message) {
+        LOG.info("Message was received by Consumer (manual sending). Operation: {}, email: {}", message.getOperation(),
+                message.getEmail());
         try {
             service.sendEmail(message);
-        } catch (Exception e){
-            return ResponseEntity.status(500).build();
+        } catch (Exception e) {
+            LOG.error("Message wasn't sent to specified email. Operation: {}, email: {}. Exception {}", message.getOperation(),
+                    message.getEmail(), e.getMessage());
+            throw new RuntimeException(e.getMessage());
         }
-        return ResponseEntity.status(HttpStatus.OK).build();
     }
 }

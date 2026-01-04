@@ -53,6 +53,10 @@ public class KafkaConfig {
         config.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, idempotence);
         config.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, keySerializer);
         config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, valueSerializer);
+        config.put(ProducerConfig.RETRIES_CONFIG, 5);
+        config.put(ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG, 5000);
+        config.put(ProducerConfig.RETRY_BACKOFF_MS_CONFIG, 100);
+        config.put(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, 3000);
         return config;
     }
 

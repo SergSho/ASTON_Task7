@@ -1,0 +1,111 @@
+## to delete
+#server:
+#  port: 8080
+## to delete
+
+
+spring:
+  application:
+    name: springproject
+
+  cloud:
+    config:
+      uri: http://localhost:8888
+
+  config:
+    import: optional:configserver:http://localhost:8888
+
+
+## to delete
+#  cloud:
+#    config:
+#      enabled: false
+#
+#  kafka:
+#    producer:
+#      acks: all
+#      bootstrap-servers: localhost:9092
+#      properties:
+#        enable:
+#          idempotence: true
+#      key-serializer: org.apache.kafka.common.serialization.IntegerSerializer
+#      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+#
+#  datasource:
+#    url: jdbc:postgresql://localhost:5432/postgres
+#    username: postgresQL
+#    password: postgresQL
+#    driver-class-name: org.postgresql.Driver
+#
+#  jpa:
+#    hibernate:
+#      ddl-auto: update
+#    show-sql: true
+#    open-in-view: false
+#    properties:
+#      hibernate:
+#        format_sql: true
+## to delete
+
+
+#
+#  retry:
+#    instances:
+#      kafkaSendingRetry:
+#        max-attempts: 3
+#        wait-duration: 500ms
+
+
+# Values are only for checking
+# Move to config server
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        register-health-indicator:
+        # in %
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 15000
+        minimum-number-of-calls: 3
+        sliding-window-size: 4
+        sliding-window-type: COUNT_BASED
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+# Don't work!?
+        ignore-exceptions:
+          - org.springframework.dao.DataIntegrityViolationException
+
+    instances:
+      kafkaSendingBreaker:
+        baseConfig: default
+
+
+      manualSendingBreaker:
+        baseConfig: default
+
+management:
+  health:
+    circuitbreakers:
+      enabled: true
+  endpoints:
+    web:
+      exposure:
+        include: health, metric
+  metrics:
+    tags:
+      application: springproject
+
+
+
+## to delete
+#springproject:
+#  response:
+#    exception:
+#      not-found: User with specified \"id\" is not found
+#      not-unique: Specified "email" has already been registered
+#      bad-id: Entered "id" is not valid
+#      bad-argument: Entered data doesn't match the format of parameter "email"
+#
+#  kafka:
+#    topic: user-event
+## to delete

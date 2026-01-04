@@ -1,5 +1,8 @@
 package ru.shokhinsergey.springproject.controller;
 
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 //import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.http.HttpStatus;
@@ -11,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
 
 import ru.shokhinsergey.message.Message;
+
 import ru.shokhinsergey.springproject.dto.UserDtoCreateAndUpdate;
 import ru.shokhinsergey.springproject.dto.UserDtoResult;
 import ru.shokhinsergey.springproject.exceptionhandler.exception.NotValidArgumentException;
@@ -20,25 +24,17 @@ import ru.shokhinsergey.springproject.service.UserService;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+// TO DO - посмотреть возможность использования @FeignClient взамен RestTemplate
+//@FeignClient(name = "consumer")
 @RestController
 @RequestMapping("/users")
-
-//TO DO - посмотреть возможность использования взамен RestTemplate
-//@FeignClient(name = "consumer")
 public class UserController {
 
-
-    //Client-side discovery
-//    private final String URL = "http://consumer/message";
-
     private final UserService userService;
-    private final RestTemplate restTemplate;
 
     @Autowired
-    public UserController(UserService userService, RestTemplate restTemplate) {
-
+    public UserController(UserService userService) {
         this.userService = userService;
-        this.restTemplate = restTemplate;
     }
 
     @GetMapping("/{id}")
@@ -55,18 +51,12 @@ public class UserController {
         return optionalResult.stream().findAny().orElseThrow();
     }
 
+    // FOR MANUAL SENDING
     @DeleteMapping("/message/{id}")
     public UserDtoResult deleteWithManualMessageSending(@PathVariable Integer id) {
         if (id <= 0) throw new NotValidIdException();
         Optional<UserDtoResult> optionalResult = userService.deleteWithManualMessageSending(id);
-        UserDtoResult result = optionalResult.stream().findAny().orElseThrow();
-        Message message = Message.instanceOfMessageOnDelete(result.getEmail());
-
-        //Client-side discovery
-        ResponseEntity<Void> response = restTemplate.postForEntity("http://consumer/message", message, Void.class);
-        if (!response.getStatusCode().is2xxSuccessful())
-            throw new RuntimeException("User deleted from DB. Message not sent by email");
-        return result;
+        return optionalResult.stream().findAny().orElseThrow();
     }
 
     @PostMapping()
@@ -81,6 +71,7 @@ public class UserController {
         return userService.create(userCreateDto);
     }
 
+    // FOR MANUAL SENDING
     @PostMapping("/message")
     public UserDtoResult createWithManualMessageSending(@RequestBody @Validated UserDtoCreateAndUpdate userCreateDto,
                                                         BindingResult errors) {
@@ -88,15 +79,10 @@ public class UserController {
             String message = messageFromErrors(errors);
             throw new NotValidArgumentException(message);
         }
-        UserDtoResult result = userService.createWithManualMessageSending(userCreateDto);
-        Message message = Message.instanceOfMessageOnCreate(result.getEmail());
-
-        //Client-side discovery
-        ResponseEntity<Void> response = restTemplate.postForEntity("http://consumer/message", message, Void.class);
-        if (!response.getStatusCode().is2xxSuccessful())
-            throw new RuntimeException("User saved in DB. Message not sent by email.");
-        return result;
+        return userService.createWithManualMessageSending(userCreateDto);
     }
+
+
 
     private String messageFromErrors(BindingResult errors) {
         String lineSeparator = System.lineSeparator();
