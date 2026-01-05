@@ -6,7 +6,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 //import org.springframework.cloud.client.circuitbreaker.CircuitBreakerFactory;
-import org.springframework.dao.DataIntegrityViolationException;
+
+import org.springframework.cloud.client.circuitbreaker.CircuitBreakerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
 import org.springframework.stereotype.Service;
@@ -25,6 +26,8 @@ import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 
 
+// TO DO - посмотреть возможность использования @FeignClient взамен RestTemplate
+//@FeignClient()
 @Service
 @Transactional
 public class UserService {
@@ -45,20 +48,18 @@ public class UserService {
     private final UserMapper userMapper;
     private final UserDtoResultMapper userDtoMapper;
     private final UserRepository userRepository;
-//    private final CircuitBreakerFactory cbf;
+    private final CircuitBreakerFactory<?, ?> cbf;
 
     @Autowired
     public UserService(KafkaTemplate<Integer, Message> kafkaTemplate, UserMapper userMapper,
                        UserDtoResultMapper userDtoMapper, UserRepository userRepository,
-                       RestTemplate restTemplate
-//            , CircuitBreakerFactory cbf
-    ) {
+                       RestTemplate restTemplate, CircuitBreakerFactory<?, ?> cbf) {
         this.kafkaTemplate = kafkaTemplate;
         this.userMapper = userMapper;
         this.userDtoMapper = userDtoMapper;
         this.userRepository = userRepository;
         this.restTemplate = restTemplate;
-//        this.cbf = cbf;
+        this.cbf = cbf;
     }
 
     public Optional<UserDtoResult> get(Integer id) {
@@ -67,34 +68,73 @@ public class UserService {
         return userOptional.map(userDtoMapper::mapFrom).stream().findAny();
     }
 
-    @CircuitBreaker(name = "kafkaSendingBreaker", fallbackMethod = "defaultDeleteWithoutSending")
+
+    // CircuitBreaker ("kafkaSendingBreaker") controls only sending message (method - "sendToKafka")
     public Optional<UserDtoResult> delete(Integer id) {
         Optional<User> userOptional = onDelete(id);
         if (userOptional.isPresent()) {
-            Message message = Message.instanceOfMessageOnDelete(userOptional.get().getEmail());
-            SendResult<Integer, Message> mess;
+            User user = userOptional.get();
+            Message message = Message.instanceOfMessageOnDelete(user.getEmail());
 
-            try {
-                mess = kafkaTemplate.send(topic, userOptional.get().getId(), message).get();
-            } catch (InterruptedException | ExecutionException e) {
-                LOG.error("PrimaryMethod. Exception when sending {}", e.getMessage());
-                throw new RuntimeException(e);
-            }
+            sendToKafka(user, message);
 
             LOG.info("PrimaryMethod. User was deleted successfully.");
-            LOG.info("PrimaryMethod. Message was sent to Kafka successfully. " + mess.getRecordMetadata());
             return userOptional.map(userDtoMapper::mapFrom).stream().findFirst();
         }
         LOG.warn("PrimaryMethod. User with specified id = {} is not found", id);
         return Optional.empty();
     }
 
+
+    // CircuitBreaker ("kafkaSendingBreaker") controls only sending message (method - "sendToKafka")
+    public UserDtoResult create(UserDtoCreateAndUpdate userCreateDto) {
+        User createUser = userMapper.mapFrom(userCreateDto);
+        createUser = userRepository.save(createUser);
+        Message message = Message.instanceOfMessageOnCreate(createUser.getEmail());
+
+        sendToKafka(createUser, message);
+
+        LOG.info("PrimaryMethod. User was created successfully");
+        return userDtoMapper.mapFrom(createUser);
+    }
+
+    // CircuitBreaker - "kafkaSendingBreaker"
+    private void sendToKafka(User user, Message message) {
+        org.springframework.cloud.client.circuitbreaker.CircuitBreaker breaker = cbf.create("kafkaSendingBreaker");
+        breaker.run(() -> {
+                SendResult<Integer, Message> mess;
+                try {
+                    mess = kafkaTemplate.send(topic, user.getId(), message).get();
+                } catch (InterruptedException | ExecutionException e) {
+                    LOG.error("PrimaryMethod. Exception when sending {}", e.getMessage());
+                    throw new RuntimeException(e);
+                }
+                LOG.info("PrimaryMethod. Message was sent to Kafka successfully. " + mess.getRecordMetadata());
+                return null;
+            },
+            throwable -> {
+                LOG.error("FallbackMethod. Exception when sending {}", throwable.getMessage());
+                return null;
+            });
+    }
+
+    private Optional<User> onDelete(Integer id) {
+        Optional<User> userOptional = userRepository.findById(id);
+        if (userOptional.isPresent()) {
+            userRepository.deleteById(id);
+        }
+        return userOptional;
+    }
+
+    // CircuitBreaker ("manualSendingBreaker") controls whole method (all exception!!!)
     @CircuitBreaker(name = "manualSendingBreaker", fallbackMethod = "defaultDeleteWithoutSending")
     public Optional<UserDtoResult> deleteWithManualMessageSending(Integer id) {
         Optional<User> userOptional = onDelete(id);
         if (userOptional.isPresent()) {
             Message message = Message.instanceOfMessageOnDelete(userOptional.get().getEmail());
+
             restTemplate.postForObject(URL, message, Void.class);
+
             LOG.info("PrimaryMethod. User was deleted successfully");
             LOG.info("PrimaryMethod. Message was sent to \"{}\" successfully", message.getEmail());
             return userOptional.map(userDtoMapper::mapFrom).stream().findFirst();
@@ -111,39 +151,11 @@ public class UserService {
         return userOptional.map(userDtoMapper::mapFrom).stream().findFirst();
     }
 
-    private Optional<User> onDelete(Integer id) {
-        Optional<User> userOptional = userRepository.findById(id);
-        if (userOptional.isPresent()) {
-            userRepository.deleteById(id);
-        }
-        return userOptional;
-    }
-
-    @CircuitBreaker(name = "kafkaSendingBreaker", fallbackMethod = "defaultCreateWithoutSending")
-    public UserDtoResult create(UserDtoCreateAndUpdate userCreateDto) {
-        User createUser = userMapper.mapFrom(userCreateDto);
-        createUser = userRepository.save(createUser);
-        Message message = Message.instanceOfMessageOnCreate(createUser.getEmail());
-        SendResult<Integer, Message> mess;
-
-        try {
-            mess = kafkaTemplate.send(topic, createUser.getId(), message).get();
-        } catch (InterruptedException | ExecutionException e) {
-            LOG.error("PrimaryMethod. Exception when sending {}", e.getMessage());
-            throw new RuntimeException(e);
-        }
-
-        LOG.info("PrimaryMethod. User was created successfully");
-        LOG.info("PrimaryMethod. Message was sent to Kafka successfully. " + mess.getRecordMetadata());
-        return userDtoMapper.mapFrom(createUser);
-    }
-
+    // CircuitBreaker ("manualSendingBreaker") controls whole method (all exception!!!)
     @CircuitBreaker(name = "manualSendingBreaker", fallbackMethod = "defaultCreateWithoutSending")
     public UserDtoResult createWithManualMessageSending(UserDtoCreateAndUpdate userCreateDto) {
         User createUser = userMapper.mapFrom(userCreateDto);
         createUser = userRepository.save(createUser);
-
-
         Message message = Message.instanceOfMessageOnCreate(createUser.getEmail());
 
         restTemplate.postForObject(URL, message, Void.class);
