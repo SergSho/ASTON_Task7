@@ -9,9 +9,9 @@ import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
 
 @SpringBootApplication
 @EnableDiscoveryClient
-@OpenAPIDefinition(
-        info = @Info(title = "HomeWork_Task7", version = "1.0.0.", description = "API for User-Service")
-)
+//@OpenAPIDefinition(
+//        info = @Info(title = "HomeWork_Task7", version = "1.0.0.", description = "API for User-Service")
+//)
 public class SpringprojectApplication {
 
     public static void main(String[] args) {
